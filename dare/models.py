@@ -1,14 +1,18 @@
 from django.db import models
 import os,sys
 import django.utils.simplejson as json
+import dare.facebookutilities as FB
+import general_messages_module as GMTM
+
 
 #global variables
-ID_LENGTH = 20
+ID_LENGTH = 255
 NAME_LENGTH = 128
 ACCESS_TOKEN_LENGTH = 128
 GENDER_LENGTH = 20
 LOCATION_LENGTH = 512
 DESCRIPTION_LENGTH = 8096
+FB_POST_ID_LENGTH = 1024
 PROJECT_HOME = "/home/natty/djangoprogramming/dares"
 IMAGES_LOCATION = os.path.join(PROJECT_HOME,"images")
 MEMBER_IMAGE_LOCATION = os.path.join(PROJECT_HOME,"member")
@@ -186,8 +190,11 @@ class MemberDare(models.Model):
             max_length=ID_LENGTH,default="dares.com")
     assginedDate = models.DateTimeField(auto_now_add=True)
     isDareCompleted = models.BooleanField(default=False)
-    approvedCount = models.PositiveIntegerField(default=0)
-    notApprovedCount = models.PositiveIntegerField(default=0)
+    isDarePosted = models.BooleanField(default=False)
+    approvalsCount = models.PositiveIntegerField(default=0)
+    approvalsNeededCount = models.PositiveIntegerField()
+    fbPostId = models.CharField(max_length=FB_POST_ID_LENGTH)
+    dareProof = models.CharField(max_length=LOCATION_LENGTH)
 
     """
     get methods
@@ -197,47 +204,158 @@ class MemberDare(models.Model):
     def getMember(self):
         return self.member
     def getDare(self):
-        return self.Dare
+        return self.dare
     def getAssignedDate(self):
         return self.assignedDate
-    def getApprovedCount(self):
-        return self.approvedCount
-    def getNotApprovedCount(self):
-        return self.notApprovedCount
+    def getApprovalsCount(self):
+        return self.approvalsCount
+    def getApprovalsNeededCount(self):
+        return self.approvalsNeededCount
     def getLevelNumber(self):
         return self.dare.getLevelNumber()
-        
+    def getFBPostId(self):
+        return self.fbPostId
+    def getDareProofURL(self):
+        return self.dareProof
+    def getIsPosted(self):
+        if self.isPosted():
+            return "True"
+        else:
+            return "False"
+    def getIsCompleted(self):
+        if self.isCompleted():
+            return "True"
+        else:
+            return "False"
+    """
+    is methods
+    """   
+    def isCompleted(self):
+        print self.isDareCompleted
+        return self.isDareCompleted
+    def isPosted(self):
+        return self.isDarePosted
     """
     set methods
     """
-    def setApprovedCount(slef,count):
-        self.approvedCount = count
-    def setNoApprovedCount(self,count):
-        self.notApprovedCount = count
+    def setApprovalsCount(self,count):
+        self.approvalsCount = count
+        self.save()
+    def setApprovalsNeededCount(self,count):
+        self.approvalsNeededCount = count
+        self.save()
+    def setIsCompleted(self,newStatus):
+        self.isDareCompleted = newStatus
+        self.save()
+    def setIsPosted(self,newStatus):
+        self.isDarePosted = newStatus
+        self.save()
+    def setDareProofURL(self,url):
+        self.dareProof = url
+        self.save()
+    def setFBPostId(self,postId):
+        self.fbPostId = postId
+        self.save()
     
-    def isDareCompleted(self):
-        dare = self.getDare()
-        levelNumber = dare.getLevelNumber()
-        minFriendsApprovalCount = MINIMUM_APPROVALS_COUNTS[levelNumber][0]
-        approvedCount = self.getApprovedCount()
-        notApprovedCount = self.getNotApprovedCount()
-        if approvedCount - notApprovedCount >= minFriendsApprovalCount:
-            return True
-        else:
-            return False
+    def updateStats(self):
+        if self.isPosted():
+            #get the number of likes from FaceBook
+            graphAPI = FB.GraphAPI(self.member.getAccessToken())
+            likesCount = graphAPI.getLikesCount(self.getFBPostId())
+            self.setApprovalsCount(likesCount)
+            dare = self.getDare()
+            levelNumber = dare.getLevelNumber()
+            minFriendsApprovalCount = MINIMUM_APPROVALS_COUNTS[levelNumber][0]
+            approvalsCount = self.getApprovalsCount()
+            approvalsNeededCount = minFriendsApprovalCount - approvalsCount
+            if approvalsNeededCount < 0:
+                approvalsNeededCount = 0
+            self.setApprovalsNeededCount(approvalsNeededCount)
+            if self.getApprovalsNeededCount() == 0:
+                self.setIsCompleted(True)
 
     def convertToMap(self):
         retMap = {}
         retMap['dareId'] = self.getId()
         retMap['dareTitle'] = self.dare.getTitle()
         retMap['dareDescription'] = self.dare.getDescription()
-        retMap['dareVedioOfDescriptionLocation'] =\
+        retMap['isDarePosted'] = self.getIsPosted()
+        retMap['isDareCompleted'] = self.getIsCompleted()
+        return retMap
+    
+    def convertToStatsMap(self):
+        retMap = {}
+        retMap['dareId'] = self.getId()
+        retMap['dareSampleVedioLocation'] =\
             self.dare.getVedioOfDescriptionLocation()
-        retMap['dareLevelNumber'] = self.dare.getLevelNumber()
-        retMap['dareApprovedCount'] = self.getApprovedCount()
-        retMap['dareNotApprovedCount'] = self.getNotApprovedCount()
+        retMap['dareLikesCount'] = self.getApprovalsCount()
+        retMap['dareLikesNeededCount'] = self.getApprovalsNeededCount()
+        retMap['isDarePosted'] = str(self.isPosted())
+        retMap['isDareCompleted'] = str(self.isCompleted())
 
         return retMap
+"""
+set member dare post data
+"""
+def setMemberDarePostData(memberId,memberDareId,postId):
+    memberDare = MemberDare.objects.get(pk=memberDareId)
+    memberDare.setFBPostId(postId)
+    memberDare.setIsPosted(True)
+    if (memberDare.getMember().getId()) == memberId:
+        retStatus,retData = syncMemberDareWithFB(memberDare)
+        if retStatus is None:
+            #return the error
+            memberDare.setFBPostId("")
+            memberDare.setIsPosted(False)
+            return retData
+        else:
+            return GMTM.Response().success()
+        
+    else:
+        return GMTM.ModelError().notAuthorizeToPostOnThisDare()
+"""
+sync the member dare data with facebook likes count
+"""
+def syncMemberDareWithFB(memberDare):
+    if memberDare.isPosted():
+        postId = memberDare.getFBPostId()
+        #get likes on post
+        graphAPI = FB.GraphAPI(memberDare.getMember().getAccessToken())
+        likesCount,FBResponse = graphAPI.getLikesCount(postId)
+        print "likesCount: ",likesCount,FBResponse
+        if likesCount is None:
+            #return the error
+            return likesCount,FBResponse
+        else:
+            memberDare.setApprovalsCount(likesCount)
+            levelNumber = memberDare.getDare().getLevelNumber()
+            minFriendsApprovalCount = MINIMUM_APPROVALS_COUNTS[levelNumber][0]
+            approvalsCount = memberDare.getApprovalsCount()
+            approvalsNeededCount = minFriendsApprovalCount - approvalsCount
+            if approvalsNeededCount < 0:
+                approvalsNeededCount = 0
+            memberDare.setApprovalsNeededCount(approvalsNeededCount)
+            if memberDare.getApprovalsNeededCount() == 0:
+                memberDare.setIsCompleted(True)
+            return likesCount,GMTM.Response().success()
+    else:
+        retStatus = False
+        return retStatus,GMTM.Response().noPostForDareYet()
+
+"""
+get member dare stats
+"""
+def getMemberDareStats(memberId,memberDareId):
+    memberDare = MemberDare.objects.get(pk=memberDareId)
+    if (memberDare.getMember().getId()) == memberId:
+        retStatus,retData = syncMemberDareWithFB(memberDare)
+        if retStatus is None:
+            #return the error
+            return retData
+        else:
+            return memberDare.convertToStatsMap()
+    else:
+        return GMTM.ModelError().notAuthorizeOnThisDare()
         
 """
 method to return a list of dares with level number = levNumber
@@ -248,6 +366,14 @@ def getMemberDaresList(member):
     memberId = member.getId()
     curLevelNumber = member.getCurLevelNumber()
     memberDareObjects = getMemberDareObjects(memberId,curLevelNumber)
+    
+    #will be the when the server crashed after the member creation but
+    #before assignment of the dares
+    if len(memberDareObjects) ==0:
+        #assing dares to Member
+        assignDaresToMember(member)
+        memberDareObjects = getMemberDareObjects(memberId,curLevelNumber)
+
     retMemberDares = []
     for memberDareObject in memberDareObjects:
         retMemberDare = memberDareObject.convertToMap()
@@ -273,7 +399,9 @@ method to assign Dare to a Member
 Working Here:
 """
 def assignDareToMember(inputMember,inputDare,daredBy="dares.com"):
-    memberDare = MemberDare(member=inputMember,dare=inputDare)
+    memberDare = MemberDare(member=inputMember,dare=inputDare,
+            approvalsNeededCount=MINIMUM_APPROVALS_COUNTS[
+            inputDare.getLevelNumber()][0])
     memberDare.save()
 
 def assignDaresToMember(member):
