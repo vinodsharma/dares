@@ -9,5 +9,6 @@ urlpatterns = urlpatterns+patterns('dare.views.daresdata',
     (r'^profile', 'getProfile'),
     (r'^post', 'setPostData'),
     (r'^darestats', 'getDareStats'),
+    (r'^mystats', 'getFullProfile'),
 )
 

@@ -25,12 +25,12 @@ MINIMUM_APPROVALS_COUNTS[levelNumber][friendsCount,OtherMemberCount]
 ex: level0 minimum approvals from friends = MINIMUM_APPROVALS_COUNTS[0][0] 
 
 """
-MINIMUM_APPROVALS_COUNTS = [[5,2],[10,4],[20,8],[25,10],[30,12],[35,14]]
+MINIMUM_APPROVALS_COUNTS = [[1,2],[10,4],[20,8],[25,10],[30,12],[35,14]]
 
 """
 minimum dares to be completed to finish a level
 """
-MINIMUM_DARES_TO_BE_COMPLETED = [20,10,5,4,3,2]
+MINIMUM_DARES_TO_BE_COMPLETED = [2,10,5,4,3,2]
 
 # Create your models here.
 class Member(models.Model):
@@ -66,14 +66,22 @@ class Member(models.Model):
     """
     def setCurLevelNumber(self,newLevelNumber):
         self.curLevelNumber = newLevelNumber
+        self.save()
     def setFirstName(self,fName):
         self.firstName = fName
+        self.save()
     def setLastName(self,lName):
         self.lastName = lName
+        self.save()
     def setGender(self,memberGender):
         self.gender = memberGender
+        self.save()
     def setAccessToken(self,fbAccessToken):
         self.accessToken = accessToken
+        self.save()
+
+    def incrementLevel(self):
+        self.setCurLevelNumber(self.getCurLevelNumber()+1)
 
 
 
@@ -163,12 +171,16 @@ class Dare(models.Model):
     """
     def setLevelNumber(self,levelNumber):
         self.levelNumber = levelNumber
+        self.save()
     def setTitle(self,title):
         self.title = title
+        self.save()
     def setDescription(self,description):
         self.description = description
+        self.save()
     def setVedioOfDiscriptionLocation(self,location):
         self.vedioOfDescriptionLocation = location
+        self.save()
 
 
 def createDare(levelNumber,title,description,vedioOfDescriptionLocation):
@@ -341,6 +353,35 @@ def syncMemberDareWithFB(memberDare):
     else:
         retStatus = False
         return retStatus,GMTM.Response().noPostForDareYet()
+"""
+sync member with FB
+"""
+def syncMemberWithFB(memberId):
+    member = getMember(memberId)
+    curLevelNumber = member.getCurLevelNumber()
+    memberDareObjects = getMemberDareObjects(member,
+            member.getCurLevelNumber())
+    responses = []
+    for memberDare in memberDareObjects:
+        retStatus,retData = syncMemberDareWithFB(memberDare)
+        responses.append([retStatus,retData])
+    
+    #check if level is changed to assingn new dare
+    daresApprovedCount = 0
+    daresNeedToBeApprovedCount = 0
+    memberDareObjects = getMemberDareObjects(member,curLevelNumber)
+    for memberDare in memberDareObjects:
+        if memberDare.isCompleted():
+            daresApprovedCount +=1
+    daresNeedToBeApprovedCount = MINIMUM_DARES_TO_BE_COMPLETED[
+            curLevelNumber]-daresApprovedCount
+    if daresNeedToBeApprovedCount <= 0:
+        #code to increase the level here
+        member.incrementLevel()
+        #assign new level dare
+        assignDaresToMember(member)
+
+    return responses
 
 """
 get member dare stats
@@ -356,24 +397,62 @@ def getMemberDareStats(memberId,memberDareId):
             return memberDare.convertToStatsMap()
     else:
         return GMTM.ModelError().notAuthorizeOnThisDare()
-        
+
+"""
+return stats about the member similar to how many dares completed
+how many more to be completed to change the level
+"""
+def getMemberStats(memberId):
+    member = getMember(memberId)
+    curLevelNumber = member.getCurLevelNumber()
+    totalDares = 0
+    daresPostedCount = 0
+    daresApprovedCount = 0
+    daresWaitingForApprovalCount = 0
+    daresNeedToBeApprovedCount = 0
+    daresNeedToBePostedCount = 0
+
+    memberDareObjects = getMemberDareObjects(member,curLevelNumber)
+    totalDares = len(memberDareObjects)
+    for memberDare in memberDareObjects:
+        if memberDare.isPosted():
+            daresPostedCount +=1
+        if memberDare.isCompleted():
+            daresApprovedCount +=1
+    daresWaitingForApprovalCount = daresPostedCount - daresApprovedCount
+    daresNeedToBeApprovedCount = MINIMUM_DARES_TO_BE_COMPLETED[
+            curLevelNumber]-daresApprovedCount
+    if daresNeedToBeApprovedCount <= 0:
+        daresNeedToBeApprovedCount = 0
+        #code to increase the level here
+        member.incrementLevel()
+        #assign new level dare
+        assignDaresToMember(member)
+    daresNeedToBePostedCount = MINIMUM_DARES_TO_BE_COMPLETED[
+            curLevelNumber]-daresPostedCount
+    if daresNeedToBePostedCount <= 0:
+        dareNeedToBePostedCount = 0
+    
+    #create a hash map of return stats
+    memberStats = {}
+    memberStats['daresPostedCount'] = daresPostedCount   
+    memberStats['daresApprovedCount'] = daresApprovedCount
+    memberStats['daresWaitingForApprovalCount'] = daresWaitingForApprovalCount
+    memberStats['daresNeedToBeApprovedCount'] = daresNeedToBeApprovedCount
+    memberStats['daresNeedToBePostedCount'] = daresNeedToBePostedCount 
+    return memberStats
+    
 """
 method to return a list of dares with level number = levNumber
 return: a list, in which every element is a map, with key as 
 dare parameter and value as dare value
 """
 def getMemberDaresList(member):
+
     memberId = member.getId()
     curLevelNumber = member.getCurLevelNumber()
-    memberDareObjects = getMemberDareObjects(memberId,curLevelNumber)
+    memberDareObjects = getMemberDareObjects(member,curLevelNumber)
     
-    #will be the when the server crashed after the member creation but
-    #before assignment of the dares
-    if len(memberDareObjects) ==0:
-        #assing dares to Member
-        assignDaresToMember(member)
-        memberDareObjects = getMemberDareObjects(memberId,curLevelNumber)
-
     retMemberDares = []
     for memberDareObject in memberDareObjects:
         retMemberDare = memberDareObject.convertToMap()
@@ -381,14 +460,28 @@ def getMemberDaresList(member):
     return retMemberDares
     
 """
-method to return memberDare objects with specified memberId,level number
+method to return memberDare objects with specified member,level number
 """
 def getMemberDareObjects(inputMember,levelNumber):
-    tempMemberDareObjects = MemberDare.objects.filter(member=inputMember)
+    tempMemberDareObjects = MemberDare.objects.filter(member=inputMember,)
     memberDareObjects = []
+    
+    tempMemberDareObjects = MemberDare.objects.filter(member=inputMember)
     for memberDareObject in tempMemberDareObjects:
         if memberDareObject.getLevelNumber() == levelNumber:
             memberDareObjects.append(memberDareObject)
+
+    #will be the when the server crashed after the member creation but
+    #before assignment of the dares or level changed
+    if len(memberDareObjects) ==0:
+        #assing dares to Member
+        assignDaresToMember(inputMember)
+        tempMemberDareObjects = MemberDare.objects.filter(member=inputMember)
+        for memberDareObject in tempMemberDareObjects:
+            if memberDareObject.getLevelNumber() == levelNumber:
+                memberDareObjects.append(memberDareObject)
+        
+    print memberDareObjects
 
     return memberDareObjects
         
@@ -405,6 +498,7 @@ def assignDareToMember(inputMember,inputDare,daredBy="dares.com"):
     memberDare.save()
 
 def assignDaresToMember(member):
+    print "assignDaresTOMember"
     curLevelNumber = member.getCurLevelNumber()
     #get the all dares with level number = curLevelNumber
     dares = getDareObjects(curLevelNumber)
