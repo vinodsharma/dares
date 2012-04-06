@@ -76,7 +76,7 @@ class Member(models.Model):
     def setGender(self,memberGender):
         self.gender = memberGender
         self.save()
-    def setAccessToken(self,fbAccessToken):
+    def setAccessToken(self,accessToken):
         self.accessToken = accessToken
         self.save()
 
@@ -84,6 +84,9 @@ class Member(models.Model):
         self.setCurLevelNumber(self.getCurLevelNumber()+1)
 
 
+def updateFBAccessToken(memberId,accessToken):
+     member = Member.objects.get(pk=memberId)
+     member.setAccessToken(accessToken)
 
 def isNewMember(memberId):
     try:

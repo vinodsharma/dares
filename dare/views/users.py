@@ -46,6 +46,9 @@ def userLogin(request):
     if fbId:
         if isNewMember(fbId):
             createNewMember(fbProfile,accessToken)
+        else:
+            updateFBAccessToken(fbId,accessToken)
+
         #set the sesison variable
         setSessionVariable(request,fbId)
         return HttpResponse(json.dumps(getMemberProfile(fbId)))
