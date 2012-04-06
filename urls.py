@@ -1,6 +1,6 @@
 from django.conf.urls.defaults import *
 import sys
-
+#code promoted to daresdev directory
 # Uncomment the next two lines to enable the admin:
 from django.contrib import admin
 admin.autodiscover()
