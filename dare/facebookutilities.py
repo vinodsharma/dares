@@ -58,6 +58,39 @@ class GraphAPI:
             errorResponse = json.loads(error.next())
             return GraphAPIError().invalidAccessToken(errorResponse)
     """
+    visit url
+    """
+    def visitURL(self,url):
+        try:
+            response = urllib2.urlopen(url)
+            return json.loads(response.next())
+        except urllib2.HTTPError,error:
+            errorResponse = json.loads(error.next())
+            return GraphAPIError().invalidAccessToken(errorResponse)
+    """
+    get object data
+    return a map with data as key
+    """
+    def getObjectData(self,path):
+        url = GRAPH_API_URL+path+"?access_token="+self.accessToken
+        response = self.visitURL(url)
+        if response.has_key('data'):
+            objectData = response
+            while response.has_key("paging") and response['paging'].has_key(
+                    'next'):
+                print response['paging']
+                response = self.visitURL(response['paging']['next'])
+                if response.has_key("data"):
+                    objectData['data'].extend(response['data'])
+                else:
+                    return response
+            if objectData.has_key('paging'):
+                del(objectData['paging'])
+            return objectData
+        else:
+            return response
+
+    """
     create an object and return the id of the object in json format
     """
     def createObject(self,path,data):
@@ -99,7 +132,17 @@ class GraphAPI:
             if fbObject.has_key('likes'):
                 return fbObject['likes']['count'],fbObject
             else:
-                return 0,fbObject
+                return 0,fbObject  
+    """
+      return the list of fbFriendIds
+    """
+    def getFriends(self):
+        friendList = self.getObjectData("me/friends")
+        if friendList.has_key('data'):
+            return friendList['data'],None
+        else:
+            #when there is error
+            return None,friendList
 
 
     

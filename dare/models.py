@@ -33,6 +33,7 @@ minimum dares to be completed to finish a level
 MINIMUM_DARES_TO_BE_COMPLETED = [2,10,5,4,3,2]
 
 # Create your models here.
+
 class Member(models.Model):
     id = models.CharField(max_length=ID_LENGTH,primary_key=True)
     curLevelNumber = models.IntegerField(default=0)
@@ -41,6 +42,9 @@ class Member(models.Model):
     lastName = models.CharField(max_length=NAME_LENGTH)
     gender = models.CharField(max_length=GENDER_LENGTH)
     accessToken = models.CharField(max_length=ACCESS_TOKEN_LENGTH)
+    
+    friends = models.ManyToManyField("self",through="FriendShip",
+            symmetrical=False)
 
     def __unicode__(self):
         return self.firstName
@@ -88,13 +92,19 @@ def updateFBAccessToken(memberId,accessToken):
      member = Member.objects.get(pk=memberId)
      member.setAccessToken(accessToken)
 
-def isNewMember(memberId):
+def isMemberExists(memberId):
     try:
         Member.objects.get(pk=memberId)
     except Member.DoesNotExist:
-        return True
-    else:
         return False
+    else:
+        return True
+
+def isNewMember(memberId):
+    if isMemberExists(memberId):
+        return False
+    else:
+        return True
 
 def createNewMember(fbProfile,fbAccessToken):
     #set up the arguments for new member
@@ -112,6 +122,8 @@ def createNewMember(fbProfile,fbAccessToken):
             fbAccessToken)
     member.save()
 
+    #sync friends with facebook
+    syncFriendsWithFB(memberId)
     #assing dares to Member
     assignDaresToMember(member)
 
@@ -145,6 +157,63 @@ def getMemberProfile(memberId):
     return memberProfile
     #return json.dumps(memberProfile)
 
+class FriendShip(models.Model):
+    fromMember = models.ForeignKey('Member', related_name='fromMembers')
+    toMember = models.ForeignKey('Member', related_name='toMembers')
+
+    def getFriend(self):
+        return self.toMember
+"""
+add a friend
+"""
+def addFriend(memberId,friendId):
+    if isFriendShipExists(memberId,friendId) == False:
+        if isMemberExists(friendId):
+            friendShip1 = FriendShip(fromMember=getMember(memberId),
+                    toMember=getMember(friendId))
+            friendShip1.save()
+            friendShip2 = FriendShip(fromMember=getMember(friendId),
+                    toMember=getMember(memberId))
+            friendShip2.save()
+"""
+add facebook friends if they have account on dares and are not already
+friends
+"""
+def syncFriendsWithFB(memberId):
+    graphAPI = FB.GraphAPI(getMember(memberId).getAccessToken())
+    fbFriends,error = graphAPI.getFriends()
+    if fbFriends and (len(fbFriends) > 0):
+        for fbFriend in fbFriends:
+            addFriend(memberId,fbFriend['id'])
+
+
+"""
+check if friendship exits
+"""
+def isFriendShipExists(memberId,friendId):
+    friendShip1 = FriendShip.objects.filter(fromMember=getMember(memberId),
+            toMember=getMember(friendId))
+    friendShip2 = FriendShip.objects.filter(fromMember=getMember(friendId),
+            toMember=getMember(memberId))
+    if (len(friendShip1) > 0) or (len(friendShip2) > 0):
+        return True
+    else:
+        return False
+
+"""
+return my all friends 
+"""
+def getFriends(memberId):
+    friendShips = FriendShip.objects.filter(fromMember=getMember(memberId))
+    friends = []
+    for friendShip in friendShips:
+        friend = {}
+        friendObject = friendShip.getFriend()
+        friend["first_name"]=friendObject.getFirstName()
+        friend["last_name"]=friendObject.getLastName()
+        friend["memberId"]=friendObject.getId()
+        friends.append(friend)
+    return friends
 
 
 class Dare(models.Model):
@@ -201,8 +270,10 @@ def getDareObjects(levNumber):
 class MemberDare(models.Model):
     member = models.ForeignKey(Member)
     dare = models.ForeignKey(Dare)
-    daredByMemberid = models.CharField(
+    daredById = models.CharField(
             max_length=ID_LENGTH,default="dares.com")
+    isDaredByFriend = models.BooleanField(default=False)
+    isDareAccepted = models.BooleanField(default=True)
     assginedDate = models.DateTimeField(auto_now_add=True)
     isDareCompleted = models.BooleanField(default=False)
     isDarePosted = models.BooleanField(default=False)
@@ -242,6 +313,8 @@ class MemberDare(models.Model):
             return "True"
         else:
             return "False"
+    def getDaredById(self):
+        return self.daredById
     """
     is methods
     """   
@@ -250,6 +323,10 @@ class MemberDare(models.Model):
         return self.isDareCompleted
     def isPosted(self):
         return self.isDarePosted
+    def isByFriend(self):
+        return self.isDaredByFriend
+    def isAccepted(self):
+        return self.isAccpeted
     """
     set methods
     """
@@ -271,6 +348,10 @@ class MemberDare(models.Model):
     def setFBPostId(self,postId):
         self.fbPostId = postId
         self.save()
+    def setIsAccepted(self,value):
+        self.isDareAccepted = value
+        self.save()
+
     
     def updateStats(self):
         if self.isPosted():
@@ -296,6 +377,9 @@ class MemberDare(models.Model):
         retMap['dareDescription'] = self.dare.getDescription()
         retMap['isDarePosted'] = self.getIsPosted()
         retMap['isDareCompleted'] = self.getIsCompleted()
+        retMap['isDaredByFriend'] = str(self.isByFriend())
+        retMap['isDareAccepted'] = str(self.isAccepted())
+        retMap['daredById'] = self.getDaredById()
         return retMap
     
     def convertToStatsMap(self):
@@ -307,6 +391,9 @@ class MemberDare(models.Model):
         retMap['dareLikesNeededCount'] = self.getApprovalsNeededCount()
         retMap['isDarePosted'] = str(self.isPosted())
         retMap['isDareCompleted'] = str(self.isCompleted())
+        retMap['isDaredByFriend'] = str(self.isByFriend())
+        retMap['isDareAccepted'] = str(self.isAccepted())
+        retMap['daredById'] = self.getDaredById()
 
         return retMap
 """
@@ -360,6 +447,7 @@ def syncMemberDareWithFB(memberDare):
 sync member with FB
 """
 def syncMemberWithFB(memberId):
+
     member = getMember(memberId)
     curLevelNumber = member.getCurLevelNumber()
     memberDareObjects = getMemberDareObjects(member,
