@@ -4,7 +4,10 @@ import django.utils.simplejson as json
 import dare.facebookutilities as FB
 import general_messages_module as GMTM
 
-
+"""
+Assumptions: for dare to friends level will be 1000
+minimum likes needed are 5
+"""
 #global variables
 ID_LENGTH = 255
 NAME_LENGTH = 128
@@ -26,7 +29,8 @@ ex: level0 minimum approvals from friends = MINIMUM_APPROVALS_COUNTS[0][0]
 
 """
 MINIMUM_APPROVALS_COUNTS = [[1,2],[10,4],[20,8],[25,10],[30,12],[35,14]]
-
+MINIMUM_APPROVALS_COUNTS_FOR_DARE_BY_FRIEND = 1
+DARE_BY_FRIEND_LEVEL = 1000
 """
 minimum dares to be completed to finish a level
 """
@@ -326,7 +330,7 @@ class MemberDare(models.Model):
     def isByFriend(self):
         return self.isDaredByFriend
     def isAccepted(self):
-        return self.isAccpeted
+        return self.isDareAccepted
     """
     set methods
     """
@@ -378,8 +382,11 @@ class MemberDare(models.Model):
         retMap['isDarePosted'] = self.getIsPosted()
         retMap['isDareCompleted'] = self.getIsCompleted()
         retMap['isDaredByFriend'] = str(self.isByFriend())
-        retMap['isDareAccepted'] = str(self.isAccepted())
-        retMap['daredById'] = self.getDaredById()
+        if self.isByFriend():
+            retMap['isDareAccepted'] = str(self.isAccepted())
+            retMap['daredById'] = self.getDaredById()
+            retMap['daredByFirstName'] = getMember(self.getDaredById()).getFirstName()
+            retMap['daredByLastName'] = getMember(self.getDaredById()).getLastName()
         return retMap
     
     def convertToStatsMap(self):
@@ -392,8 +399,11 @@ class MemberDare(models.Model):
         retMap['isDarePosted'] = str(self.isPosted())
         retMap['isDareCompleted'] = str(self.isCompleted())
         retMap['isDaredByFriend'] = str(self.isByFriend())
-        retMap['isDareAccepted'] = str(self.isAccepted())
-        retMap['daredById'] = self.getDaredById()
+        if self.isByFriend():
+            retMap['isDareAccepted'] = str(self.isAccepted())
+            retMap['daredById'] = self.getDaredById()
+            retMap['daredByFirstName'] = getMember(self.getDaredById()).getFirstName()
+            retMap['daredByLastName'] = getMember(self.getDaredById()).getLastName()
 
         return retMap
 """
@@ -431,7 +441,10 @@ def syncMemberDareWithFB(memberDare):
         else:
             memberDare.setApprovalsCount(likesCount)
             levelNumber = memberDare.getDare().getLevelNumber()
-            minFriendsApprovalCount = MINIMUM_APPROVALS_COUNTS[levelNumber][0]
+            if memberDare.isByFriend():
+              minFriendsApprovalCount = MINIMUM_APPROVALS_COUNTS_FOR_DARE_BY_FRIEND
+            else:
+              minFriendsApprovalCount = MINIMUM_APPROVALS_COUNTS[levelNumber][0]
             approvalsCount = memberDare.getApprovalsCount()
             approvalsNeededCount = minFriendsApprovalCount - approvalsCount
             if approvalsNeededCount < 0:
@@ -471,6 +484,20 @@ def syncMemberWithFB(memberId):
         member.incrementLevel()
         #assign new level dare
         assignDaresToMember(member)
+
+    return responses
+
+"""
+sync member dares from friends with FB
+"""
+def syncMemberDareFromFriendsWithFB(memberId):
+
+    member = getMember(memberId)
+    memberDareObjects = getMemberDareFromFriendPostedObjects(member)
+    responses = []
+    for memberDare in memberDareObjects:
+        retStatus,retData = syncMemberDareWithFB(memberDare)
+        responses.append([retStatus,retData])
 
     return responses
 
@@ -554,10 +581,9 @@ def getMemberDaresList(member):
 method to return memberDare objects with specified member,level number
 """
 def getMemberDareObjects(inputMember,levelNumber):
-    tempMemberDareObjects = MemberDare.objects.filter(member=inputMember,)
     memberDareObjects = []
-    
-    tempMemberDareObjects = MemberDare.objects.filter(member=inputMember)
+    tempMemberDareObjects = MemberDare.objects.filter(member=inputMember,
+            isDaredByFriend=False)
     for memberDareObject in tempMemberDareObjects:
         if memberDareObject.getLevelNumber() == levelNumber:
             memberDareObjects.append(memberDareObject)
@@ -567,7 +593,8 @@ def getMemberDareObjects(inputMember,levelNumber):
     if len(memberDareObjects) ==0:
         #assing dares to Member
         assignDaresToMember(inputMember)
-        tempMemberDareObjects = MemberDare.objects.filter(member=inputMember)
+        tempMemberDareObjects = MemberDare.objects.filter(member=inputMember,
+                isDaredByFriend=False)
         for memberDareObject in tempMemberDareObjects:
             if memberDareObject.getLevelNumber() == levelNumber:
                 memberDareObjects.append(memberDareObject)
@@ -576,11 +603,187 @@ def getMemberDareObjects(inputMember,levelNumber):
 
     return memberDareObjects
         
+"""
+method to return all  memberDare from friends
+"""
+def getMemberDareFromFriendObjects(inputMember):
+    memberDareObjects = []
+    tempMemberDareObjects = MemberDare.objects.filter(member=inputMember,
+            isDaredByFriend=True)
+    for memberDareObject in tempMemberDareObjects:
+        memberDareObjects.append(memberDareObject)
+    return memberDareObjects
+
+def getMemberDaresFromFriendList(memberId):
+
+    member = getMember(memberId)
+    memberDareObjects = getMemberDareFromFriendObjects(member)
+    
+    retMemberDares = []
+    for memberDareObject in memberDareObjects:
+        retMemberDare = memberDareObject.convertToMap()
+        retMemberDares.append(retMemberDare)
+    return retMemberDares
+
+
+"""
+method to return memberDare from friends which are accepted by me
+"""
+def getMemberDareFromFriendAcceptedObjects(inputMember):
+    memberDareObjects = []
+    tempMemberDareObjects = MemberDare.objects.filter(member=inputMember,
+            isDaredByFriend=True,isDareAccepted=True)
+    for memberDareObject in tempMemberDareObjects:
+        memberDareObjects.append(memberDareObject)
+    return memberDareObjects
+
+def getMemberDaresFromFriendAcceptedList(memberId):
+
+    member = getMember(memberId)
+    memberDareObjects = getMemberDareFromFriendAcceptedObjects(member)
+    
+    retMemberDares = []
+    for memberDareObject in memberDareObjects:
+        retMemberDare = memberDareObject.convertToMap()
+        retMemberDares.append(retMemberDare)
+    return retMemberDares
+
+"""
+method to return memberDare from friends which are not accepted
+"""
+def getMemberDareFromFriendNotAcceptedObjects(inputMember):
+    memberDareObjects = []
+    tempMemberDareObjects = MemberDare.objects.filter(member=inputMember,
+            isDaredByFriend=True,isDareAccepted=False)
+    for memberDareObject in tempMemberDareObjects:
+        memberDareObjects.append(memberDareObject)
+    return memberDareObjects
+
+def getMemberDaresFromFriendNotAcceptedList(memberId):
+
+    member = getMember(memberId)
+    memberDareObjects = getMemberDareFromFriendNotAcceptedObjects(member)
+    
+    retMemberDares = []
+    for memberDareObject in memberDareObjects:
+        retMemberDare = memberDareObject.convertToMap()
+        retMemberDares.append(retMemberDare)
+    return retMemberDares
+
+"""
+method to return posted memberDare from friends
+"""
+def getMemberDareFromFriendPostedObjects(inputMember):
+    memberDareObjects = []
+    tempMemberDareObjects = MemberDare.objects.filter(member=inputMember,
+            isDaredByFriend=True,isDareAccepted=True,isDarePosted=True)
+    for memberDareObject in tempMemberDareObjects:
+        memberDareObjects.append(memberDareObject)
+    return memberDareObjects
+
+def getMemberDaresFromFriendPostedList(memberId):
+
+    member = getMember(memberId)
+    memberDareObjects = getMemberDareFromFriendPostedObjects(member)
+    
+    retMemberDares = []
+    for memberDareObject in memberDareObjects:
+        retMemberDare = memberDareObject.convertToMap()
+        retMemberDares.append(retMemberDare)
+    return retMemberDares
+
+"""
+method to return not posted memberDare from friends
+"""
+def getMemberDareFromFriendNotPostedObjects(inputMember):
+    memberDareObjects = []
+    tempMemberDareObjects = MemberDare.objects.filter(member=inputMember,
+            isDaredByFriend=True,isDareAccepted=True,isDarePosted=False)
+    for memberDareObject in tempMemberDareObjects:
+        memberDareObjects.append(memberDareObject)
+    return memberDareObjects
+
+def getMemberDaresFromFriendNotPostedList(memberId):
+
+    member = getMember(memberId)
+    memberDareObjects = getMemberDareFromFriendNotPostedObjects(member)
+    
+    retMemberDares = []
+    for memberDareObject in memberDareObjects:
+        retMemberDare = memberDareObject.convertToMap()
+        retMemberDares.append(retMemberDare)
+    return retMemberDares
+
+"""
+method to return completed memberDare from friends 
+"""
+def getMemberDareFromFriendCompletedObjects(inputMember):
+    memberDareObjects = []
+    tempMemberDareObjects = MemberDare.objects.filter(member=inputMember,
+            isDaredByFriend=True,isDareAccepted=True,isDarePosted=True,
+            isDareCompleted=True)
+    for memberDareObject in tempMemberDareObjects:
+        memberDareObjects.append(memberDareObject)
+    return memberDareObjects
+
+def getMemberDaresFromFriendCompletedList(memberId):
+
+    member = getMember(memberId)
+    memberDareObjects = getMemberDareFromFriendCompletedObjects(member)
+    
+    retMemberDares = []
+    for memberDareObject in memberDareObjects:
+        retMemberDare = memberDareObject.convertToMap()
+        retMemberDares.append(retMemberDare)
+    return retMemberDares
+
+"""
+method to return waiting for approval memberDare from friends 
+"""
+def getMemberDareFromFriendWFAObjects(inputMember):
+    memberDareObjects = []
+    tempMemberDareObjects = MemberDare.objects.filter(member=inputMember,
+            isDaredByFriend=True,isDareAccepted=True,isDarePosted=True,
+            isDareCompleted=False)
+    for memberDareObject in tempMemberDareObjects:
+        memberDareObjects.append(memberDareObject)
+    return memberDareObjects
+
+def getMemberDaresFromFriendWFAList(memberId):
+
+    member = getMember(memberId)
+    memberDareObjects = getMemberDareFromFriendWFAObjects(member)
+    
+    retMemberDares = []
+    for memberDareObject in memberDareObjects:
+        retMemberDare = memberDareObject.convertToMap()
+        retMemberDares.append(retMemberDare)
+    return retMemberDares
+
+"""
+method to return all dares given by me to friends
+"""
+def getMemberDareToFriendAllObjects(inputMember):
+    memberDareObjects = []
+    tempMemberDareObjects = MemberDare.objects.filter(isDaredByFriend=True,
+            daredById=inputMember.getId())
+    for memberDareObject in tempMemberDareObjects:
+        memberDareObjects.append(memberDareObject)
+    return memberDareObjects
+
+def getMemberDaresToFriendAllList(memberId):
+    member = getMember(memberId)
+    memberDareObjects = getMemberDareToFriendAllObjects(member)
+    
+    retMemberDares = []
+    for memberDareObject in memberDareObjects:
+        retMemberDare = memberDareObject.convertToMap()
+        retMemberDares.append(retMemberDare)
+    return retMemberDares
 
 
 """
 method to assign Dare to a Member
-Working Here:
 """
 def assignDareToMember(inputMember,inputDare,daredBy="dares.com"):
     memberDare = MemberDare(member=inputMember,dare=inputDare,
@@ -595,4 +798,32 @@ def assignDaresToMember(member):
     dares = getDareObjects(curLevelNumber)
     for dare in dares:
         assignDareToMember(member,dare)
+
+def createDareForFriend(memberId,friendId,dareTitle,dareDescription):
+    inputMember = getMember(memberId)
+    print "createDareForFriend: friendId",friendId
+    print "createDareForFriend: memberId",memberId
+    print "createDareForFriend: type",type(friendId)
+    print "createDareForFriend: type",type(memberId)
+    print "createDareForFriend: isMemberExists",isMemberExists(friendId)
+    print "createDareForFriend: isMemberExists",isMemberExists(memberId)
+    if not isMemberExists(friendId):
+        return  GMTM.ModelError().memberDoesNotExists()
+    inputFriend = getMember(friendId)
+    try:
+        inputDare = Dare(levelNumber=DARE_BY_FRIEND_LEVEL,title=dareTitle,
+                description=dareDescription,vedioOfDescriptionLocation=
+                dareTitle+".3gp")
+        inputDare.save()
+    except:
+        return GMTM.ModelError().cannotCreateDare()
+    try:
+        memberDare = MemberDare(member=inputFriend,dare=inputDare,
+                approvalsNeededCount=MINIMUM_APPROVALS_COUNTS_FOR_DARE_BY_FRIEND,
+                isDaredByFriend=True,isDareAccepted=True,daredById = memberId)
+        memberDare.save()
+    except:
+        return GMTM.ModelError().cannotCreateMemberDare()
+
+    return GMTM.Response().success()
 

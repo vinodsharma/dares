@@ -10,6 +10,18 @@ urlpatterns = urlpatterns+patterns('dare.views.daresdata',
     (r'^post', 'setPostData'),
     (r'^darestats', 'getDareStats'),
     (r'^friends', 'getMyFriends'),
+    (r'^givedaretomyfriend', 'giveDareToMyFriend'),
+    (r'^daresfriends/notdone', 'getNotDoneDaresFromFriends'),
+    (r'^daresfriends/completed', 'getCompletedDaresFromFriends'),
+    (r'^daresfriends/waitingforapproval', 'getWaitingForApprovalDaresFromFriends'),
+    (r'^darestofriends/', 'getAllDaresToFriends'),
     (r'^mystats', 'getFullProfile'),
 )
 
+"""
+
+    (r'^daresfriends/completed', 'getCompletedDaresFromFriends'),
+    (r'^daresfriends/waitingforapproval', 'getWaitingForApprovalDaresFromFriends'),
+
+
+"""
