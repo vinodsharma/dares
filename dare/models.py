@@ -217,7 +217,8 @@ def getFriends(memberId):
         friend["last_name"]=friendObject.getLastName()
         friend["memberId"]=friendObject.getId()
         friends.append(friend)
-    return friends
+    friendsdict = {'friends':friends}
+    return friendsdict
 
 
 class Dare(models.Model):
@@ -712,7 +713,8 @@ def getMemberDaresFromFriendNotPostedList(memberId):
     for memberDareObject in memberDareObjects:
         retMemberDare = memberDareObject.convertToMap()
         retMemberDares.append(retMemberDare)
-    return retMemberDares
+    retMemberDaresDict = {'dares':retMemberDares}
+    return retMemberDaresDict
 
 """
 method to return completed memberDare from friends 
@@ -735,7 +737,8 @@ def getMemberDaresFromFriendCompletedList(memberId):
     for memberDareObject in memberDareObjects:
         retMemberDare = memberDareObject.convertToMap()
         retMemberDares.append(retMemberDare)
-    return retMemberDares
+    retMemberDaresDict = {'dares':retMemberDares}
+    return retMemberDaresDict
 
 """
 method to return waiting for approval memberDare from friends 
@@ -758,7 +761,8 @@ def getMemberDaresFromFriendWFAList(memberId):
     for memberDareObject in memberDareObjects:
         retMemberDare = memberDareObject.convertToMap()
         retMemberDares.append(retMemberDare)
-    return retMemberDares
+    retMemberDaresDict = {'dares':retMemberDares}
+    return retMemberDaresDict
 
 """
 method to return all dares given by me to friends
@@ -779,7 +783,8 @@ def getMemberDaresToFriendAllList(memberId):
     for memberDareObject in memberDareObjects:
         retMemberDare = memberDareObject.convertToMap()
         retMemberDares.append(retMemberDare)
-    return retMemberDares
+    retMemberDaresDict = {'dares':retMemberDares}
+    return retMemberDaresDict
 
 
 """

@@ -16,7 +16,9 @@ def getFBProfile(accessToken):
         fbProfile =json.loads(response.next())
         return fbProfile['id'],fbProfile
     except urllib2.HTTPError,error:
-        errorResponse = json.loads(error.next())
+        errorRes = error.next()
+        print errorRes
+        errorResponse = json.loads(errorRes)
         errorResponse['error']['code']= FB_TOKEN_ERROR_CODE
         return None,errorResponse
     
