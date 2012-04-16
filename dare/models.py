@@ -782,6 +782,11 @@ def getMemberDaresToFriendAllList(memberId):
     retMemberDares = []
     for memberDareObject in memberDareObjects:
         retMemberDare = memberDareObject.convertToMap()
+        del retMemberDare['daredByFirstName']
+        del retMemberDare['daredByLastName']
+        friend = memberDareObject.getMember()
+        retMemberDare['daredToFirstName'] = friend.getFirstName()
+        retMemberDare['daredToLastName'] = friend.getLastName()
         retMemberDares.append(retMemberDare)
     retMemberDaresDict = {'dares':retMemberDares}
     return retMemberDaresDict
