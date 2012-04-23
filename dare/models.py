@@ -21,20 +21,21 @@ IMAGES_LOCATION = os.path.join(PROJECT_HOME,"images")
 MEMBER_IMAGE_LOCATION = os.path.join(PROJECT_HOME,"member")
 VEDIOS_LOCATION = os.path.join(PROJECT_HOME,"vedios")
 DARE_VEDIO_LOCATION = os.path.join(VEDIOS_LOCATION,"dare")
+START_LELVEL = 1
 
 """
-for now we support only level from 0-5
+for now we support only level from 1-3
 MINIMUM_APPROVALS_COUNTS[levelNumber][friendsCount,OtherMemberCount]
 ex: level0 minimum approvals from friends = MINIMUM_APPROVALS_COUNTS[0][0] 
 
 """
-MINIMUM_APPROVALS_COUNTS = [[1,2],[10,4],[20,8],[25,10],[30,12],[35,14]]
-MINIMUM_APPROVALS_COUNTS_FOR_DARE_BY_FRIEND = 1
+MINIMUM_APPROVALS_COUNTS = [[5,2],[5,4],[5,8]]
+MINIMUM_APPROVALS_COUNTS_FOR_DARE_BY_FRIEND = 5
 DARE_BY_FRIEND_LEVEL = 1000
 """
 minimum dares to be completed to finish a level
 """
-MINIMUM_DARES_TO_BE_COMPLETED = [2,10,5,4,3,2]
+MINIMUM_DARES_TO_BE_COMPLETED = [5,4,3,3]
 
 # Create your models here.
 
@@ -122,8 +123,8 @@ def createNewMember(fbProfile,fbAccessToken):
     gender = fbProfile['gender']
 
     #create a new member
-    member = Member(memberId,0,pictureLocation,firstName,lastName,gender,
-            fbAccessToken)
+    member = Member(memberId,START_LELVEL,pictureLocation,firstName,lastName,
+            gender,fbAccessToken)
     member.save()
 
     #sync friends with facebook
@@ -366,7 +367,7 @@ class MemberDare(models.Model):
             self.setApprovalsCount(likesCount)
             dare = self.getDare()
             levelNumber = dare.getLevelNumber()
-            minFriendsApprovalCount = MINIMUM_APPROVALS_COUNTS[levelNumber][0]
+            minFriendsApprovalCount = MINIMUM_APPROVALS_COUNTS[levelNumber-1][0]
             approvalsCount = self.getApprovalsCount()
             approvalsNeededCount = minFriendsApprovalCount - approvalsCount
             if approvalsNeededCount < 0:
@@ -445,7 +446,7 @@ def syncMemberDareWithFB(memberDare):
             if memberDare.isByFriend():
               minFriendsApprovalCount = MINIMUM_APPROVALS_COUNTS_FOR_DARE_BY_FRIEND
             else:
-              minFriendsApprovalCount = MINIMUM_APPROVALS_COUNTS[levelNumber][0]
+              minFriendsApprovalCount = MINIMUM_APPROVALS_COUNTS[levelNumber-1][0]
             approvalsCount = memberDare.getApprovalsCount()
             approvalsNeededCount = minFriendsApprovalCount - approvalsCount
             if approvalsNeededCount < 0:
@@ -479,7 +480,7 @@ def syncMemberWithFB(memberId):
         if memberDare.isCompleted():
             daresApprovedCount +=1
     daresNeedToBeApprovedCount = MINIMUM_DARES_TO_BE_COMPLETED[
-            curLevelNumber]-daresApprovedCount
+            curLevelNumber-1]-daresApprovedCount
     if daresNeedToBeApprovedCount <= 0:
         #code to increase the level here
         member.incrementLevel()
@@ -540,7 +541,7 @@ def getMemberStats(memberId):
             daresApprovedCount +=1
     daresWaitingForApprovalCount = daresPostedCount - daresApprovedCount
     daresNeedToBeApprovedCount = MINIMUM_DARES_TO_BE_COMPLETED[
-            curLevelNumber]-daresApprovedCount
+            curLevelNumber-1]-daresApprovedCount
     if daresNeedToBeApprovedCount <= 0:
         daresNeedToBeApprovedCount = 0
         #code to increase the level here
@@ -548,7 +549,7 @@ def getMemberStats(memberId):
         #assign new level dare
         assignDaresToMember(member)
     daresNeedToBePostedCount = MINIMUM_DARES_TO_BE_COMPLETED[
-            curLevelNumber]-daresPostedCount
+            curLevelNumber-1]-daresPostedCount
     if daresNeedToBePostedCount <= 0:
         dareNeedToBePostedCount = 0
     
@@ -798,7 +799,7 @@ method to assign Dare to a Member
 def assignDareToMember(inputMember,inputDare,daredBy="dares.com"):
     memberDare = MemberDare(member=inputMember,dare=inputDare,
             approvalsNeededCount=MINIMUM_APPROVALS_COUNTS[
-            inputDare.getLevelNumber()][0])
+            inputDare.getLevelNumber()-1][0])
     memberDare.save()
 
 def assignDaresToMember(member):

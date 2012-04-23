@@ -5,7 +5,7 @@ import urllib2,urllib
 GRAPH_API_URL = 'https://graph.facebook.com/'
 FB_TOKEN_ERROR_CODE = 501
 FB_OBJECT_DOES_NOT_EXISTS_ERROR_CODE = 502
-
+FB_LIKES_NOT_AVAILABLE_ERROR_CODE = 501
 def getFBAccessToken(request):
     return str(request.GET.getlist("access_token")[0])
 
@@ -35,6 +35,12 @@ class GraphAPIError:
     def invalidAccessToken(self,fbErrorObject):
         fbErrorObject['error']['code'] = FB_TOKEN_ERROR_CODE
         return fbErrorObject
+    
+    def likesNotAvailable(self):
+        self.error['error']['message'] = "getting likes count on object error"
+        self.error['error']['type'] = "likesNotAvailable"
+        self.error['error']['code'] = FB_LIKES_NOT_AVAILABLE_ERROR_CODE
+        return self.error
 
 
 
@@ -52,6 +58,7 @@ class GraphAPI:
             response = urllib2.urlopen(GRAPH_API_URL+objectId+"/?access_token="+
                     self.accessToken)
             fbObject = response.next()
+            print "getObject: ",fbObject
             if fbObject == 'false':
                 return GraphAPIError().objectDoesNotExists()
             return json.loads(fbObject)
@@ -80,7 +87,7 @@ class GraphAPI:
             objectData = response
             while response.has_key("paging") and response['paging'].has_key(
                     'next'):
-                print response['paging']
+                #print response['paging']
                 response = self.visitURL(response['paging']['next'])
                 if response.has_key("data"):
                     objectData['data'].extend(response['data'])
@@ -131,10 +138,12 @@ class GraphAPI:
         if fbObject.has_key("error"):
             return None,fbObject
         else:
-            if fbObject.has_key('likes'):
-                return fbObject['likes']['count'],fbObject
+            likesList = self.getObjectData(objectId+"/likes")
+            if likesList.has_key('data'):
+                return len(likesList['data']),True
             else:
-                return 0,fbObject  
+                #when there is error
+                return None,GraphAPIError().likesNotAvilable()
     """
       return the list of fbFriendIds
     """
