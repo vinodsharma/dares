@@ -287,6 +287,9 @@ class MemberDare(models.Model):
     approvalsNeededCount = models.PositiveIntegerField()
     fbPostId = models.CharField(max_length=FB_POST_ID_LENGTH)
     dareProof = models.CharField(max_length=LOCATION_LENGTH)
+    
+    def __unicode__(self):
+        return str(self.id)
 
     """
     get methods

@@ -134,6 +134,13 @@ class GraphAPI:
     error: if there is any error, returns None
     """
     def getLikesCount(self,objectId):
+        likesList = self.getObjectData(objectId+"/likes")
+        if likesList.has_key('data'):
+            return len(likesList['data']),True
+        else:
+            #when there is error
+            return None,GraphAPIError().likesNotAvilable()
+        """
         fbObject = self.getObject(objectId)
         if fbObject.has_key("error"):
             return None,fbObject
@@ -144,6 +151,7 @@ class GraphAPI:
             else:
                 #when there is error
                 return None,GraphAPIError().likesNotAvilable()
+        """
     """
       return the list of fbFriendIds
     """
